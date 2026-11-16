@@ -1,0 +1,1 @@
+"""Synthetic calibration-versioning receiver."""

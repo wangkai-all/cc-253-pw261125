@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>合成测量 · 标定版本接收台</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="mark" aria-hidden="true"></span>
+    <div>
+      <h1>标定版本接收台</h1>
+      <p class="sub">合成测量 · 原始读数与标定文件走不同通道 · 所有数据均为虚构</p>
+    </div>
+  </div>
+  <div class="topstats" id="topstats"></div>
+</header>
+
+<main>
+  <section class="grid two">
+    <div class="card">
+      <div class="card-head">
+        <h2>发布策略</h2>
+        <span class="hint">每台设备独立设置</span>
+      </div>
+      <p class="prose" id="policy-prose">
+        <strong>等标定再发布</strong>：没有在测量时刻生效的标定就不发布，延迟换取一次到位。
+        <strong>先发暂定值</strong>：立刻发布未换算或超界的占位，标定到达后追加修订。
+        两种策略的代价都按本项目实际产生的发布记录统计，见下方“代价”。
+      </p>
+      <div id="modes" class="modes"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>操作台</h2>
+        <span class="hint">按步骤执行，或任意顺序</span>
+      </div>
+      <div class="ctl-row">
+        <label for="device">设备</label>
+        <select id="device"></select>
+        <button class="btn" id="btn-send">发送 6 条读数</button>
+        <button class="btn ghost" id="btn-backfill">补传 12 条（并行通道）</button>
+      </div>
+      <div class="ctl-row">
+        <label for="cal-from">标定生效时刻</label>
+        <select id="cal-from">
+          <option value="past">早于已有读数（追溯生效）</option>
+          <option value="now">当前时刻（只影响之后的读数）</option>
+          <option value="future">未来（暂不生效，留作待定）</option>
+        </select>
+        <label for="cal-drift">偏差 kPa</label>
+        <input id="cal-drift" type="number" value="1.5" step="0.1">
+        <button class="btn" id="btn-cal">投递标定 v<span id="next-version">1</span></button>
+      </div>
+      <div class="ctl-row">
+        <button class="btn" id="btn-run">执行换算队列</button>
+        <button class="btn warn" id="btn-crash">换算中途模拟崩溃</button>
+        <button class="btn ghost" id="btn-recover">恢复并补算</button>
+        <button class="btn ghost" id="btn-refresh">刷新</button>
+      </div>
+      <details class="raw-doc">
+        <summary>手工投递 JSON 标定文件</summary>
+        <textarea id="cal-json" spellcheck="false" rows="9"></textarea>
+        <div class="ctl-row">
+          <button class="btn" id="btn-cal-json">投递这份文件</button>
+          <button class="btn ghost" id="btn-cal-template">填入模板</button>
+        </div>
+      </details>
+      <div id="ctl-note" class="note" role="status"></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>读数与发布</h2>
+      <span class="hint" id="readings-hint"></span>
+    </div>
+    <div class="table-wrap">
+      <table class="data" id="readings-table">
+        <thead>
+          <tr>
+            <th>读数</th><th>原始值</th><th>设备时间</th><th>策略</th>
+            <th>当前状态</th><th>换算值 kPa</th><th>采用版本</th><th>依据</th><th>修订</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="grid two">
+    <div class="card">
+      <div class="card-head">
+        <h2>标定版本链</h2>
+        <span class="hint">按 cal_id 分链，版本号决定选用，到达顺序不决定</span>
+      </div>
+      <div id="chains" class="chains"></div>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <h2>投递记录</h2>
+        <span class="hint">含被拒绝的文件与原因</span>
+      </div>
+      <div class="table-wrap short">
+        <table class="data" id="deliveries-table">
+          <thead><tr><th>#</th><th>设备</th><th>cal_id</th><th>版本</th><th>结果</th><th>说明</th><th>到达</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" id="detail-card">
+    <div class="card-head">
+      <h2>单条读数对比</h2>
+      <span class="hint" id="detail-hint">点击上方任意读数</span>
+    </div>
+    <div id="detail" class="detail"></div>
+  </section>
+
+  <section class="grid two">
+    <div class="card">
+      <div class="card-head">
+        <h2>代价：延迟与修订</h2>
+        <span class="hint">按每条读数首次发布时的策略分组，来自实际发布记录</span>
+      </div>
+      <div class="table-wrap short">
+        <table class="data" id="tradeoff-table">
+          <thead><tr><th>策略</th><th>读数</th><th>首发达延迟(中位)</th><th>最终发布(中位)</th><th>被修订</th><th>修订率</th><th>修订开销</th><th>最终未换算</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="prose small">
+        修订开销 = 发布总条数 / 读数数 − 1。下游拿到新修订时，<code>supersedes</code>
+        指向上一条修订，<code>revision</code> 递增；历史修订保持原样，不会被覆盖。
+      </p>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <h2>事件与运行</h2>
+        <span class="hint">换算进程、中断、恢复</span>
+      </div>
+      <div id="runs" class="runs"></div>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <span>测量时刻决定标定生效；版本号决定选用；到达顺序不参与决定。</span>
+    <span id="db-path"></span>
+  </footer>
+</main>
+<script src="/app.js"></script>
+</body>
+</html>
